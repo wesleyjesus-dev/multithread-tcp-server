@@ -5,21 +5,32 @@ using System.Text;
 var address = new IPEndPoint(IPAddress.Any, 8888);
 var listener = new TcpListener(address);
 
+var threads = new Thread[Environment.ProcessorCount];
+var cancellationToken = default(CancellationToken);
+
 try
 {
     listener.Start();
-
-    using TcpClient handler = await listener.AcceptTcpClientAsync();
-    await using NetworkStream stream = handler.GetStream();
-
-    while(handler.Connected)
+    for (int i = 0; i < Environment.ProcessorCount; i++)
     {
-        var message = $"{DateTime.Now}";
-        var messageBytes = Encoding.UTF8.GetBytes(message);
-        await stream.WriteAsync(messageBytes);
-        Console.WriteLine($"Sent message: {message}");
+        var thread = new Thread(async () => {
+            var nome = $"Thread-{i}";
+            using TcpClient handler = await listener.AcceptTcpClientAsync();
+            await using NetworkStream stream = handler.GetStream();
+            var buffer = new byte[4096];
+            while (handler.Connected)
+            {
+                var message = Encoding.UTF8.GetBytes(nome);
+                await stream.ReadAsync(buffer, 0, buffer.Length);
+                await stream.WriteAsync(buffer, cancellationToken);
+            }
+        });
+
+        threads[i] = thread;
+        threads[i].Start();
     }
     
+    Console.ReadLine();
 }
 finally
 {
